@@ -16,20 +16,47 @@ know whether this package might be useful for them.
 
 ## Features
 
-TODO: List what your package can do. Maybe include images, gifs, or videos.
+- Minimal Misskey Streaming wrapper
+- Auto reconnect with exponential backoff
+- Channel subscribe/unsubscribe API
+- Connection state stream and message stream
 
 ## Getting started
 
-TODO: List prerequisites and provide or point to information on how to
-start using the package.
+Add dependency in your `pubspec.yaml`:
+
+```yaml
+dependencies:
+  misskey_streaming:
+    path: .
+```
 
 ## Usage
 
-TODO: Include short and useful examples for package users. Add longer examples
-to `/example` folder.
-
 ```dart
-const like = 'sample';
+import 'package:misskey_streaming/misskey_streaming.dart';
+
+void main() async {
+  final client = MisskeyStreaming.create(
+    origin: Uri.parse('https://misskey.io'),
+    token: 'YOUR_TOKEN',
+    debugLog: true,
+  );
+  await client.connect();
+
+  // Subscribe to timeline
+  final subId = await client.subscribe(channel: 'homeTimeline');
+
+  // Listen messages
+  final sub = client.messages.listen((m) {
+    // handle
+  });
+
+  // ... later
+  client.unsubscribe(subId);
+  await sub.cancel();
+  await client.dispose();
+}
 ```
 
 ## Additional information
