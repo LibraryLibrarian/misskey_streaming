@@ -1,0 +1,35 @@
+# .github/workflows/publish-on-tag.yml
+name: Publish to pub.dev (on tag)
+
+on:
+  push:
+    tags:
+      - 'v*'   # pub.dev 側の tag-pattern 'v{{version}}' と揃える
+
+jobs:
+  publish:
+    permissions:
+      id-token: write
+
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Sets up Flutter (and Dart) SDK
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      # OIDC 認証トークンをセット（これがないと「Allow access」で止まる）
+      - uses: dart-lang/setup-dart@v1
+
+      - run: flutter --version
+
+      - name: Dry run
+      # Dryrun
+        run: flutter pub publish --dry-run
+
+      - name: Publish
+      # 対話なしで公開
+        run: flutter pub publish --force
