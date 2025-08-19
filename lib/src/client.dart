@@ -8,11 +8,68 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import 'config.dart';
 import 'subscription.dart';
 import 'types.dart';
+import 'package:misskey_api_core/misskey_api_core.dart' as core;
 
 class MisskeyStreamingClient {
   MisskeyStreamingClient(this.config);
 
   final MisskeyStreamConfig config;
+
+  /// Core HTTP クライアントから設定を引き継いで Streaming クライアントを生成
+  factory MisskeyStreamingClient.fromClient(
+    core.MisskeyHttpClient client, {
+    bool enableAutoReconnect = true,
+    bool debugLog = false,
+    Duration? pingInterval,
+    Duration connectTimeout = const Duration(seconds: 15),
+    Duration reconnectInitialDelay = const Duration(seconds: 1),
+    Duration reconnectMaxDelay = const Duration(seconds: 30),
+    int? maxReconnectAttempts,
+    Map<String, dynamic>? customHeaders,
+    Iterable<String>? protocols,
+    WebSocketChannel Function(Uri uri)? connector,
+    void Function(String, String)? logger,
+    Object Function(Object error)? exceptionMapper,
+  }) {
+    final Uri origin = deriveOriginFromApiBase(client.baseUrl);
+
+    final void Function(String, String)? bridgedLogger = logger ??
+        (client.logger != null
+            ? (String level, String message) {
+                switch (level) {
+                  case 'debug':
+                    client.logger!.debug(message);
+                    break;
+                  case 'warn':
+                    client.logger!.warn(message);
+                    break;
+                  case 'error':
+                    client.logger!.error(message);
+                    break;
+                  default:
+                    client.logger!.info(message);
+                }
+              }
+            : null);
+
+    final MisskeyStreamConfig cfg = MisskeyStreamConfig(
+      origin: origin,
+      tokenProvider: client.tokenProvider,
+      enableAutoReconnect: enableAutoReconnect,
+      pingInterval: pingInterval ?? const Duration(seconds: 30),
+      connectTimeout: connectTimeout,
+      reconnectInitialDelay: reconnectInitialDelay,
+      reconnectMaxDelay: reconnectMaxDelay,
+      maxReconnectAttempts: maxReconnectAttempts,
+      customHeaders: customHeaders,
+      debugLog: debugLog,
+      protocols: protocols,
+      connector: connector,
+      logger: bridgedLogger,
+      exceptionMapper: exceptionMapper ?? client.exceptionMapper,
+    );
+    return MisskeyStreamingClient(cfg);
+  }
 
   final BehaviorSubject<MisskeyConnectionState> _statusSubject =
       BehaviorSubject<MisskeyConnectionState>.seeded(
@@ -108,8 +165,9 @@ class MisskeyStreamingClient {
 
   Future<void> _openChannel() async {
     try {
-      final Uri uri = config.streamingUri;
-      _log('Connecting to: $uri');
+      final String? token = await _resolveToken();
+      final Uri uri = config.buildStreamingUri(token);
+      _log('info', 'Connecting to: $uri');
       final WebSocketChannel channel = (config.connector != null)
           ? config.connector!(uri)
           : WebSocketChannel.connect(uri, protocols: config.protocols);
@@ -124,11 +182,11 @@ class MisskeyStreamingClient {
           _onMessage(data);
         },
         onError: (Object error, StackTrace stack) {
-          _log('Socket error: $error');
+          _log('error', 'Socket error: $error');
           _onError(error);
         },
         onDone: () {
-          _log('Socket done');
+          _log('info', 'Socket done');
           _onDone();
         },
         cancelOnError: false,
@@ -145,8 +203,20 @@ class MisskeyStreamingClient {
     }
   }
 
+  Future<String?> _resolveToken() async {
+    try {
+      if (config.tokenProvider != null) {
+        return await config.tokenProvider!();
+      }
+      return config.token;
+    } catch (e) {
+      _log('warn', 'tokenProvider failed: $e');
+      return config.token;
+    }
+  }
+
   void _onOpen() {
-    _log('Connected');
+    _log('info', 'Connected');
     _statusSubject.add(MisskeyConnectionState.open);
     _reconnectAttempts = 0;
     _startPing();
@@ -165,10 +235,10 @@ class MisskeyStreamingClient {
             jsonDecode(text) as Map<String, dynamic>;
         _dispatchDecoded(decoded);
       } else {
-        _log('Unknown message type: ${data.runtimeType}');
+        _log('warn', 'Unknown message type: ${data.runtimeType}');
       }
     } catch (e) {
-      _log('Message parse error: $e');
+      _log('error', 'Message parse error: $e');
     }
   }
 
@@ -200,10 +270,13 @@ class MisskeyStreamingClient {
 
   void _onError(Object error) {
     if (_isDisposed) return;
+    final Object mapped =
+        config.exceptionMapper != null ? config.exceptionMapper!(error) : error;
     _statusSubject.add(MisskeyConnectionState.error);
     if (config.enableAutoReconnect) {
       _scheduleReconnect();
     }
+    _log('error', 'onError: $mapped');
   }
 
   void _onDone() {
@@ -219,12 +292,13 @@ class MisskeyStreamingClient {
     final int attempt = ++_reconnectAttempts;
     if (config.maxReconnectAttempts != null &&
         attempt > config.maxReconnectAttempts!) {
-      _log('Max reconnect attempts reached');
+      _log('error', 'Max reconnect attempts reached');
       _statusSubject.add(MisskeyConnectionState.error);
       return;
     }
     final Duration delay = _computeBackoffDelay(attempt);
-    _log('Reconnecting in ${delay.inMilliseconds}ms (attempt: $attempt)');
+    _log('info',
+        'Reconnecting in ${delay.inMilliseconds}ms (attempt: $attempt)');
     Future<void>.delayed(delay, () {
       if (_isDisposed) return;
       _statusSubject.add(MisskeyConnectionState.reconnecting);
@@ -266,14 +340,18 @@ class MisskeyStreamingClient {
     final WebSocketChannel? channel = _channel;
     if (channel == null) return;
     final String text = jsonEncode(payload);
-    _log('>> $text');
+    _log('debug', '>> $text');
     channel.sink.add(text);
   }
 
-  void _log(String message) {
+  void _log(String level, String message) {
+    if (config.logger != null) {
+      config.logger!(level, message);
+      return;
+    }
     if (config.debugLog) {
       // ignore: avoid_print
-      print('[misskey_streaming] $message');
+      print('[misskey_streaming][$level] $message');
     }
   }
 }

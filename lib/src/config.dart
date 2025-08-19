@@ -1,10 +1,12 @@
+import 'dart:async';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 /// Misskey Streaming 接続設定
 class MisskeyStreamConfig {
   MisskeyStreamConfig({
     required this.origin,
-    required this.token,
+    this.token,
+    this.tokenProvider,
     this.enableAutoReconnect = true,
     this.pingInterval = const Duration(seconds: 30),
     this.connectTimeout = const Duration(seconds: 15),
@@ -15,13 +17,19 @@ class MisskeyStreamConfig {
     this.debugLog = false,
     this.protocols,
     this.connector,
+    this.logger,
+    this.exceptionMapper,
   });
 
   /// Misskey のベースURL (例: https://misskey.io)
   final Uri origin;
 
   /// アクセストークン (Misskey Auth で取得した `i`)
-  final String token;
+  /// 未ログインの場合は null
+  final String? token;
+
+  /// トークンの動的取得関数。指定があればこちらが優先されます
+  final FutureOr<String?> Function()? tokenProvider;
 
   /// 自動再接続を有効化
   final bool enableAutoReconnect;
@@ -53,8 +61,15 @@ class MisskeyStreamConfig {
   /// WebSocket 接続の差し替え用ファクトリ（テスト用 / カスタム実装用）
   final WebSocketChannel Function(Uri uri)? connector;
 
-  /// Streaming エンドポイント (例: wss://misskey.io/streaming?i=token)
-  Uri get streamingUri {
+  /// ロガー差し替え（レベルは任意の文字列: debug/info/warn/error 等）
+  final void Function(String level, String message)? logger;
+
+  /// 例外マッピング（任意の例外→ライブラリ独自例外等に変換）
+  final Object Function(Object error)? exceptionMapper;
+
+  /// Streaming エンドポイントの生成
+  /// tokenOverride により `?i=` の有無を制御（null/空文字で省略）
+  Uri buildStreamingUri(String? tokenOverride) {
     final String scheme;
     if (origin.scheme == 'https') {
       scheme = 'wss';
@@ -66,16 +81,28 @@ class MisskeyStreamConfig {
       scheme = 'wss';
     }
 
+    final Map<String, String> qp = <String, String>{};
+    final String? t = tokenOverride ?? token;
+    if (t != null && t.isNotEmpty) {
+      qp['i'] = t;
+    }
+
+    final String basePath = origin.path.isEmpty
+        ? '/'
+        : (origin.path.endsWith('/') ? origin.path : '${origin.path}/');
+    final String streamingPath = '${basePath}streaming';
+
     return origin.replace(
       scheme: scheme,
-      path: '/streaming',
-      queryParameters: <String, String>{'i': token},
+      path: streamingPath,
+      queryParameters: qp.isEmpty ? null : qp,
     );
   }
 
   MisskeyStreamConfig copyWith({
     Uri? origin,
     String? token,
+    FutureOr<String?> Function()? tokenProvider,
     bool? enableAutoReconnect,
     Duration? pingInterval,
     Duration? connectTimeout,
@@ -86,10 +113,13 @@ class MisskeyStreamConfig {
     bool? debugLog,
     Iterable<String>? protocols,
     WebSocketChannel Function(Uri uri)? connector,
+    void Function(String level, String message)? logger,
+    Object Function(Object error)? exceptionMapper,
   }) {
     return MisskeyStreamConfig(
       origin: origin ?? this.origin,
       token: token ?? this.token,
+      tokenProvider: tokenProvider ?? this.tokenProvider,
       enableAutoReconnect: enableAutoReconnect ?? this.enableAutoReconnect,
       pingInterval: pingInterval ?? this.pingInterval,
       connectTimeout: connectTimeout ?? this.connectTimeout,
@@ -101,6 +131,19 @@ class MisskeyStreamConfig {
       debugLog: debugLog ?? this.debugLog,
       protocols: protocols ?? this.protocols,
       connector: connector ?? this.connector,
+      logger: logger ?? this.logger,
+      exceptionMapper: exceptionMapper ?? this.exceptionMapper,
     );
   }
+}
+
+/// APIベースURL(例: https://host/api) から Streaming 用の origin を導出
+Uri deriveOriginFromApiBase(Uri apiBaseUrl) {
+  final String path = apiBaseUrl.path;
+  String newPath = path;
+  if (path.endsWith('/api')) {
+    newPath = path.substring(0, path.length - 4);
+  }
+  if (newPath.isEmpty) newPath = '/';
+  return apiBaseUrl.replace(path: newPath, query: null);
 }
