@@ -1,4 +1,4 @@
-import 'package:meta/meta.dart';
+import 'package:flutter/foundation.dart';
 
 /// Misskey Streaming API の接続状態
 enum MisskeyConnectionState {
