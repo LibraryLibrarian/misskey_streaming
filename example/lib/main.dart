@@ -305,15 +305,47 @@ class _TimelineChannelPageState extends State<TimelineChannelPage>
       if (msg.type == 'note' && msg.body is Map<String, dynamic>) {
         final note = (msg.body as Map<String, dynamic>);
         final user = (note['user'] as Map?)?.cast<String, dynamic>();
+        final createdAtStr = note['createdAt']?.toString();
+        DateTime? createdAt;
+        if (createdAtStr != null) {
+          try {
+            createdAt = DateTime.tryParse(createdAtStr)?.toLocal();
+          } catch (_) {}
+        }
+
+        final List<_MediaItem> media = <_MediaItem>[];
+        final files = note['files'];
+        if (files is List) {
+          for (final f in files) {
+            if (f is Map) {
+              final m = f.cast<String, dynamic>();
+              final String? url = (m['thumbnailUrl'] ?? m['url'])?.toString();
+              if (url != null && url.isNotEmpty) {
+                media.add(
+                  _MediaItem(url: url, isSensitive: (m['isSensitive'] == true)),
+                );
+              }
+            }
+          }
+        }
+
+        final String username = user?['username']?.toString() ?? 'unknown';
+        final String? host = user?['host']?.toString();
+        final String acct = host == null || host.isEmpty
+            ? '@$username'
+            : '@$username@$host';
+
         final data = _NoteViewData(
           id: (note['id'] ?? '').toString(),
-          text: (note['cw'] as String?)?.isNotEmpty == true
-              ? '[CW] ${note['cw']}\n${note['text'] ?? ''}'
-              : (note['text'] ?? '').toString(),
-          username: user?['username']?.toString() ?? 'unknown',
-          host: user?['host']?.toString(),
-          name: user?['name']?.toString(),
+          displayName: (user?['name']?.toString().isNotEmpty == true)
+              ? user!['name']!.toString()
+              : username,
+          acct: acct,
           avatarUrl: user?['avatarUrl']?.toString(),
+          cw: (note['cw'] as String?)?.toString(),
+          text: (note['text'] ?? '').toString(),
+          createdAt: createdAt,
+          media: media,
         );
         if (!mounted) return;
         if (_isAtTop) {
@@ -354,20 +386,7 @@ class _TimelineChannelPageState extends State<TimelineChannelPage>
           separatorBuilder: (_, __) => const Divider(height: 1),
           itemBuilder: (context, index) {
             final e = _items[index];
-            final display = e.name?.isNotEmpty == true ? e.name! : e.username;
-            final acct = e.host == null || e.host!.isEmpty
-                ? '@${e.username}'
-                : '@${e.username}@${e.host}';
-            return ListTile(
-              key: ValueKey(e.id),
-              leading: _Avatar(url: e.avatarUrl),
-              title: Text(display),
-              subtitle: Text(e.text),
-              trailing: Text(
-                acct,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            );
+            return _NoteCard(key: ValueKey(e.id), data: e);
           },
         ),
         if (_pending.isNotEmpty && !_isAtTop)
@@ -440,19 +459,193 @@ class _Avatar extends StatelessWidget {
   }
 }
 
+class _MediaItem {
+  final String url;
+  final bool isSensitive;
+  const _MediaItem({required this.url, this.isSensitive = false});
+}
+
 class _NoteViewData {
   final String id;
-  final String text;
-  final String username;
-  final String? host;
-  final String? name;
+  final String displayName;
+  final String acct;
   final String? avatarUrl;
+  final String? cw;
+  final String text;
+  final DateTime? createdAt;
+  final List<_MediaItem> media;
   const _NoteViewData({
     required this.id,
+    required this.displayName,
+    required this.acct,
+    required this.avatarUrl,
+    required this.cw,
     required this.text,
-    required this.username,
-    this.host,
-    this.name,
-    this.avatarUrl,
+    required this.createdAt,
+    required this.media,
   });
+}
+
+class _NoteCard extends StatefulWidget {
+  const _NoteCard({super.key, required this.data});
+  final _NoteViewData data;
+  @override
+  State<_NoteCard> createState() => _NoteCardState();
+}
+
+class _NoteCardState extends State<_NoteCard> {
+  bool _cwExpanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final d = widget.data;
+    final theme = Theme.of(context);
+    final time = _formatRelative(d.createdAt);
+
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _Avatar(url: d.avatarUrl),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              d.displayName,
+                              style: theme.textTheme.titleMedium,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (time != null)
+                            Text(time, style: theme.textTheme.bodySmall),
+                        ],
+                      ),
+                      Text(d.acct, style: theme.textTheme.bodySmall),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            if (d.cw != null && d.cw!.isNotEmpty)
+              _CwBlock(
+                text: d.text,
+                cw: d.cw!,
+                expanded: _cwExpanded,
+                onToggle: () => setState(() => _cwExpanded = !_cwExpanded),
+              )
+            else
+              Text(d.text),
+            if (d.media.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              _MediaPreview(media: d.media),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  String? _formatRelative(DateTime? time) {
+    if (time == null) return null;
+    final now = DateTime.now();
+    final diff = now.difference(time);
+    if (diff.inSeconds < 60) return '${diff.inSeconds}s';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m';
+    if (diff.inHours < 24) return '${diff.inHours}h';
+    return '${diff.inDays}d';
+  }
+}
+
+class _CwBlock extends StatelessWidget {
+  const _CwBlock({
+    required this.text,
+    required this.cw,
+    required this.expanded,
+    required this.onToggle,
+  });
+  final String text;
+  final String cw;
+  final bool expanded;
+  final VoidCallback onToggle;
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(child: Text('[CW] $cw')),
+            TextButton(
+              onPressed: onToggle,
+              child: Text(expanded ? '非表示' : '表示'),
+            ),
+          ],
+        ),
+        if (expanded) Text(text),
+      ],
+    );
+  }
+}
+
+class _MediaPreview extends StatelessWidget {
+  const _MediaPreview({required this.media});
+  final List<_MediaItem> media;
+  @override
+  Widget build(BuildContext context) {
+    return GridView.builder(
+      physics: const NeverScrollableScrollPhysics(),
+      shrinkWrap: true,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        mainAxisSpacing: 6,
+        crossAxisSpacing: 6,
+        childAspectRatio: 1.4,
+      ),
+      itemCount: media.length.clamp(0, 4),
+      itemBuilder: (context, index) {
+        final m = media[index];
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.network(m.url, fit: BoxFit.cover),
+              ),
+            ),
+            if (m.isSensitive)
+              Positioned(
+                left: 6,
+                top: 6,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black54,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: const Text(
+                    'NSFW',
+                    style: TextStyle(color: Colors.white, fontSize: 10),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
 }
