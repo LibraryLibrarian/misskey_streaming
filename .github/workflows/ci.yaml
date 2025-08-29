@@ -72,7 +72,7 @@ jobs:
       - uses: actions/setup-java@v4
         with: { distribution: 'temurin', java-version: '17' }
       - uses: subosito/flutter-action@v2
-        with: { channel: stable, flutter-version: '3.32.x', cache: true }
+        with: { channel: stable, flutter-version: '3.35.x', cache: true }
       - run: cd example && flutter pub get && flutter build apk
       - uses: actions/upload-artifact@v4
         with:
@@ -82,11 +82,13 @@ jobs:
   example-ios:
     needs: changes
     if: needs.changes.outputs.example == 'true' || needs.changes.outputs.package == 'true' || github.event_name == 'workflow_dispatch'
-    runs-on: macos-latest
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with: { xcode-version: '15.4' }
       - uses: subosito/flutter-action@v2
-        with: { channel: stable, flutter-version: '3.32.x', cache: true }
+        with: { channel: stable, flutter-version: '3.35.x', cache: true }
       - run: cd example && flutter pub get && flutter build ios --debug --simulator
       - uses: actions/upload-artifact@v4
         with:
