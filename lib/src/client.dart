@@ -149,6 +149,9 @@ class MisskeyStreamingClient {
     subject?.close();
   }
 
+  /// 購読IDを指定して解除（`unsubscribe`のエイリアス）
+  void unsubscribeById(String id) => unsubscribe(id);
+
   void sendRaw(Map<String, dynamic> payload) {
     _sendJson(payload);
   }
@@ -156,6 +159,44 @@ class MisskeyStreamingClient {
   Stream<MisskeyMessage> messagesFor(String subscriptionId) {
     _ensureSubject(subscriptionId);
     return _perSubscriptionSubjects[subscriptionId]!.stream;
+  }
+
+  /// 指定チャンネル名に一致する購読をまとめて解除
+  ///
+  /// - `channel`: 対象チャンネル名（例: `homeTimeline`）
+  ///
+  /// 返り値は解除した購読ID数。該当がなければ0を返す
+  int unsubscribeChannel(String channel) {
+    final List<String> targets = _subscriptions.values
+        .where((s) => s.channel == channel)
+        .map((s) => s.id)
+        .toList(growable: false);
+    for (final String id in targets) {
+      unsubscribe(id);
+    }
+    return targets.length;
+  }
+
+  /// 指定チャンネルを購読し`id`でルーティングされたストリームを返す
+  ///
+  /// - `channel`: 接続するMisskeyのチャンネル名（例: `homeTimeline`）
+  /// - `id`: 購読ID。未指定の場合はUUIDを自動採番
+  /// - `params`: チャンネル固有の追加パラメータ
+  ///
+  /// 返り値は、購読IDとストリーム、解除操作を持つハンドル
+  Future<MisskeySubscriptionHandle> subscribeAsStream({
+    required String channel,
+    String? id,
+    Map<String, dynamic> params = const <String, dynamic>{},
+  }) async {
+    final String subId =
+        await subscribe(channel: channel, id: id, params: params);
+    final Stream<MisskeyChannelMessage> stream = messagesFor(subId);
+    return MisskeySubscriptionHandle(
+      id: subId,
+      stream: stream,
+      onUnsubscribe: () => unsubscribe(subId),
+    );
   }
 
   void _ensureSubject(String subscriptionId) {
@@ -356,59 +397,17 @@ class MisskeyStreamingClient {
   }
 }
 
-extension MisskeyStreamingClientConvenience on MisskeyStreamingClient {
-  Future<String> subscribeMain({String? id}) {
-    return subscribe(channel: 'main', id: id);
-  }
-
-  Future<String> subscribeHomeTimeline({String? id}) {
-    return subscribe(channel: 'homeTimeline', id: id);
-  }
-
-  Future<String> subscribeLocalTimeline({
+extension MisskeyStreamingClientChannel on MisskeyStreamingClient {
+  /// 任意のチャンネル名を購読し、ルーティング済みストリームを返す
+  Future<MisskeySubscriptionHandle> subscribeChannelStream({
+    required String channel,
     String? id,
-    bool withRenotes = true,
-    bool withReplies = true,
+    Map<String, dynamic> params = const <String, dynamic>{},
   }) {
-    return subscribe(
-      channel: 'localTimeline',
-      id: id,
-      params: <String, dynamic>{
-        'withRenotes': withRenotes,
-        'withReplies': withReplies,
-      },
-    );
+    return subscribeAsStream(channel: channel, id: id, params: params);
   }
 
-  Future<String> subscribeGlobalTimeline({
-    String? id,
-    bool withRenotes = true,
-    bool withReplies = true,
-  }) {
-    return subscribe(
-      channel: 'globalTimeline',
-      id: id,
-      params: <String, dynamic>{
-        'withRenotes': withRenotes,
-        'withReplies': withReplies,
-      },
-    );
-  }
-
-  Future<String> subscribeAntenna(String antennaId, {String? id}) {
-    return subscribe(
-        channel: 'antenna',
-        id: id,
-        params: <String, dynamic>{'antennaId': antennaId});
-  }
-
-  Future<String> subscribeUserList(String listId, {String? id}) {
-    return subscribe(
-        channel: 'userList',
-        id: id,
-        params: <String, dynamic>{'listId': listId});
-  }
-
+  /// 任意のチャンネル名宛てにイベントを送信（必要なチャンネルでのみ有効）
   void sendToChannel(String subscriptionId, String eventType,
       [Map<String, dynamic>? payload]) {
     sendRaw(<String, dynamic>{

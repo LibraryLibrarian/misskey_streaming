@@ -52,4 +52,64 @@ void main() {
     expect(uri.path, '/streaming');
     expect(uri.queryParameters['i'], 'T');
   });
+
+  test('購読解除でdisconnectが送信されストリームが完了する', () async {
+    final client = MisskeyStreamingClient(MisskeyStreamConfig(
+      origin: Uri.parse('https://h.example'),
+      token: 'T',
+    ));
+
+    final handle = await client.subscribeChannelStream(channel: 'homeTimeline');
+
+    final done = expectLater(handle.stream, emitsDone);
+    handle.unsubscribe();
+
+    await done;
+    await client.dispose();
+  });
+
+  test('チャンネル名でまとめて購読解除可能か', () async {
+    final client = MisskeyStreamingClient(MisskeyStreamConfig(
+      origin: Uri.parse('https://h.example'),
+      token: 'T',
+    ));
+
+    final h1 = await client.subscribe(channel: 'homeTimeline', id: 'h1');
+    final h2 = await client.subscribe(channel: 'homeTimeline', id: 'h2');
+    final g1 = await client.subscribe(channel: 'globalTimeline', id: 'g1');
+    expect(h1, 'h1');
+    expect(h2, 'h2');
+    expect(g1, 'g1');
+
+    final count = client.unsubscribeChannel('homeTimeline');
+    expect(count, 2);
+
+    // 残っているのは globalTimeline のみ
+    final rem = await client.subscribe(channel: 'globalTimeline', id: 'g2');
+    expect(rem, 'g2');
+
+    // 明示的にクリーンアップ
+    client.unsubscribe('g1');
+    client.unsubscribe('g2');
+    await client.dispose();
+  });
+
+  test('ID指定で購読解除できる', () async {
+    final client = MisskeyStreamingClient(MisskeyStreamConfig(
+      origin: Uri.parse('https://h.example'),
+      token: 'T',
+    ));
+
+    final id = await client.subscribe(channel: 'homeTimeline', id: 'home-xyz');
+    expect(id, 'home-xyz');
+
+    client.unsubscribeById('home-xyz');
+
+    // 同じIDで subscribe できれば、前の購読が解除されていることの簡易確認とする
+    final id2 = await client.subscribe(channel: 'homeTimeline', id: 'home-xyz');
+    expect(id2, 'home-xyz');
+
+    client.unsubscribe(id2);
+    await client.dispose();
+  });
 }

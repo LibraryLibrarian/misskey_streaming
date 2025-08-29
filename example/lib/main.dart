@@ -208,13 +208,12 @@ class _HomeScreenState extends State<HomeScreen> {
       TimelineChannelPage(
         title: 'Global',
         streaming: _streaming,
-        subscribe: (c) =>
-            c.subscribeGlobalTimeline(withRenotes: true, withReplies: true),
+        subscribe: (c) => c.subscribe(channel: 'globalTimeline'),
       ),
       TimelineChannelPage(
         title: 'Home',
         streaming: _streaming,
-        subscribe: (c) => c.subscribeHomeTimeline(),
+        subscribe: (c) => c.subscribe(channel: 'homeTimeline'),
       ),
       TimelineChannelPage(
         title: 'Hybrid',
@@ -224,8 +223,7 @@ class _HomeScreenState extends State<HomeScreen> {
       TimelineChannelPage(
         title: 'Local',
         streaming: _streaming,
-        subscribe: (c) =>
-            c.subscribeLocalTimeline(withRenotes: true, withReplies: true),
+        subscribe: (c) => c.subscribe(channel: 'localTimeline'),
       ),
       SettingPage(onLogout: widget.onLogout),
     ];
