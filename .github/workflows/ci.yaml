@@ -39,7 +39,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        flutter: ['3.24.x','3.27.x','3.29.x','3.32.x']
+        flutter: ['3.32.x', '3.35.x']
         resolution: ['min','max']
     steps:
       - uses: actions/checkout@v4
