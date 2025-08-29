@@ -216,7 +216,7 @@ class _HomeScreenState extends State<HomeScreen> {
         subscribe: (c) => c.subscribe(channel: 'homeTimeline'),
       ),
       TimelineChannelPage(
-        title: 'Hybrid',
+        title: 'Social',
         streaming: _streaming,
         subscribe: (c) => c.subscribe(channel: 'hybridTimeline'),
       ),
