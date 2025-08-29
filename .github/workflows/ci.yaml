@@ -28,6 +28,7 @@ jobs:
               - 'analysis_options.yaml'
               - 'lib/**'
               - 'test/**'
+              - '.github/workflows/**'
             example:
               - 'example/**'
 
