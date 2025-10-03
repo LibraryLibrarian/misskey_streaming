@@ -24,7 +24,7 @@ dependencies:
   web_socket_channel: ^3.0.3
   rxdart: ^0.28.0
   uuid: ^4.5.1
-  misskey_api_core: ^0.0.2-beta
+  misskey_api_core: ^0.0.4-beta
 
 dev_dependencies:
   flutter_test:

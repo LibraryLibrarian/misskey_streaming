@@ -292,10 +292,10 @@ packages:
     dependency: "direct main"
     description:
       name: misskey_api_core
-      sha256: "9478b4c32a4c2d2cc9c543cc3c41f0c6a82bb6708b6d1c2836426347c865c357"
+      sha256: a4ab4dcadebd2c11061c79e4839f2f25740cf966e8e2a3763102baf55f45ee96
       url: "https://pub.dev"
     source: hosted
-    version: "0.0.2-beta"
+    version: "0.0.4-beta"
   misskey_auth:
     dependency: "direct main"
     description:
