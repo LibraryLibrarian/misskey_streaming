@@ -1,9 +1,14 @@
 {
   "debug.internalConsoleOptions": "openOnSessionStart",
-  "dart.flutterSdkPath": ".fvm/versions/3.38.4",
+  "dart.flutterSdkPath": ".fvm/versions/3.38.2",
   "[dart]": {
     "editor.defaultFormatter": "Dart-Code.dart-code",
     "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "quickfix.insertSemicolon": "always",
+      "source.fixAll": "explicit",
+      "source.organizeImports": "explicit"
+    },
     "editor.formatOnType": true,
     "editor.rulers": [
       80
