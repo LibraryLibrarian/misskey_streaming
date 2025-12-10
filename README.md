@@ -66,6 +66,45 @@ Future<void> main() async {
 }
 ```
 
+### Note Capture Example
+
+To receive real-time updates (reactions, deletions, etc.) for notes, you need to capture them:
+
+```dart
+import 'package:misskey_streaming/misskey_streaming.dart';
+
+Future<void> main() async {
+  final client = MisskeyStreaming.create(
+    origin: Uri.parse('https://misskey.io'),
+    token: 'YOUR_ACCESS_TOKEN',
+  );
+  await client.connect();
+
+  final handle = await client.subscribeChannelStream(channel: 'homeTimeline');
+
+  handle.stream.listen((msg) {
+    if (msg.type == 'note') {
+      // When a new note is received, capture it
+      final noteId = msg.body['id'] as String;
+      client.captureNote(handle.id, noteId);
+    } else if (msg.type == 'reacted') {
+      // Reaction added event
+      final reaction = msg.body['reaction'];
+      final userId = msg.body['userId'];
+      print('Reacted: $reaction by $userId');
+    } else if (msg.type == 'unreacted') {
+      // Reaction removed event
+      final reaction = msg.body['reaction'];
+      print('Unreacted: $reaction');
+    } else if (msg.type == 'deleted') {
+      // Note deleted event
+      final noteId = msg.body['id'];
+      print('Note deleted: $noteId');
+    }
+  });
+}
+```
+
 ### API Reference
 
 - Connection
@@ -87,6 +126,10 @@ Future<void> main() async {
   - `void unsubscribe(String id)`
   - `Stream<MisskeyMessage> get messages` / `Stream<MisskeyMessage> messagesFor(String id)`
   - `void sendToChannel(String subscriptionId, String eventType, [Map<String, dynamic>? payload])`
+
+- Note Capture (for real-time updates)
+  - `void captureNote(String subscriptionId, String noteId)` - Capture a note to receive real-time events (reactions, deletions, etc.)
+  - `void uncaptureNote(String subscriptionId, String noteId)` - Stop capturing a note
 
 - Configuration (`MisskeyStreamConfig`)
   - `origin`, `token` or `tokenProvider`
@@ -156,6 +199,45 @@ Future<void> main() async {
 }
 ```
 
+### ノートキャプチャの使用例
+
+ノートのリアルタイム更新（リアクション、削除等）を受信するには、ノートをキャプチャする必要があります：
+
+```dart
+import 'package:misskey_streaming/misskey_streaming.dart';
+
+Future<void> main() async {
+  final client = MisskeyStreaming.create(
+    origin: Uri.parse('https://misskey.io'),
+    token: 'YOUR_ACCESS_TOKEN',
+  );
+  await client.connect();
+
+  final handle = await client.subscribeChannelStream(channel: 'homeTimeline');
+
+  handle.stream.listen((msg) {
+    if (msg.type == 'note') {
+      // 新しいノートを受信したら、キャプチャする
+      final noteId = msg.body['id'] as String;
+      client.captureNote(handle.id, noteId);
+    } else if (msg.type == 'reacted') {
+      // リアクション追加イベント
+      final reaction = msg.body['reaction'];
+      final userId = msg.body['userId'];
+      print('リアクション追加: $reaction by $userId');
+    } else if (msg.type == 'unreacted') {
+      // リアクション削除イベント
+      final reaction = msg.body['reaction'];
+      print('リアクション削除: $reaction');
+    } else if (msg.type == 'deleted') {
+      // ノート削除イベント
+      final noteId = msg.body['id'];
+      print('ノート削除: $noteId');
+    }
+  });
+}
+```
+
 ### API リファレンス
 
 - 接続
@@ -177,6 +259,10 @@ Future<void> main() async {
   - `void unsubscribe(String id)`
   - `Stream<MisskeyMessage> messages`（全件）/ `Stream<MisskeyMessage> messagesFor(String id)`（個別）
   - `void sendToChannel(String subscriptionId, String eventType, [Map<String, dynamic>? payload])`
+
+- ノートキャプチャ（リアルタイム更新用）
+  - `void captureNote(String subscriptionId, String noteId)` - ノートをキャプチャしてリアルタイムイベント（リアクション、削除等）を受信
+  - `void uncaptureNote(String subscriptionId, String noteId)` - ノートのキャプチャを解除
 
 - 設定（`MisskeyStreamConfig`）
   - `origin`、`token` または `tokenProvider`

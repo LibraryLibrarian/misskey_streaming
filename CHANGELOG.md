@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.2-beta] - 2025-12-10
+
+### Added
+- Note capture functionality via `MisskeyStreamingClientNoteCapture` extension
+  - `captureNote(String subscriptionId, String noteId)` - Capture a note to receive real-time events (reactions, deletions, etc.)
+  - `uncaptureNote(String subscriptionId, String noteId)` - Stop capturing a note
+- Documentation and examples for note capture in README
+
 ## [0.0.1-beta] - 2025-08-30
 
 ### Added

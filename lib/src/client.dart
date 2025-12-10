@@ -408,3 +408,49 @@ extension MisskeyStreamingClientChannel on MisskeyStreamingClient {
     });
   }
 }
+
+/// ノートキャプチャ機能を提供するextension
+extension MisskeyStreamingClientNoteCapture on MisskeyStreamingClient {
+  /// ノートをキャプチャしてリアクション等のイベントを受信可能にする
+  ///
+  /// キャプチャ後、以下のイベントが受信可能
+  /// - `reacted`: リアクション追加
+  /// - `unreacted`: リアクション削除
+  /// - `deleted`: ノート削除
+  /// - `pollVoted`: 投票が行われた（アンケート付きノートの場合）
+  ///
+  /// [subscriptionId]: イベントを受信するチャンネルの購読ID
+  /// [noteId]: キャプチャするノートのID
+  ///
+  /// Example:
+  /// ```dart
+  /// final handle = await client.subscribeChannelStream(
+  ///   channel: 'homeTimeline',
+  /// );
+  ///
+  /// handle.stream.listen((msg) {
+  ///   if (msg.type == 'note') {
+  ///     final noteId = msg.body['id'];
+  ///     client.captureNote(handle.id, noteId);
+  ///   } else if (msg.type == 'reacted') {
+  ///     // リアクションイベントを処理
+  ///   }
+  /// });
+  /// ```
+  void captureNote(String subscriptionId, String noteId) {
+    sendToChannel(subscriptionId, 'subNote', <String, dynamic>{'id': noteId});
+  }
+
+  /// ノートのキャプチャを解除
+  ///
+  /// [subscriptionId]: イベントを受信していたチャンネルの購読ID
+  /// [noteId]: キャプチャを解除するノートのID
+  ///
+  /// Example:
+  /// ```dart
+  /// client.uncaptureNote(handle.id, noteId);
+  /// ```
+  void uncaptureNote(String subscriptionId, String noteId) {
+    sendToChannel(subscriptionId, 'unsubNote', <String, dynamic>{'id': noteId});
+  }
+}
