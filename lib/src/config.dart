@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 /// Misskey Streaming 接続設定
@@ -81,16 +82,16 @@ class MisskeyStreamConfig {
       scheme = 'wss';
     }
 
-    final Map<String, String> qp = <String, String>{};
-    final String? t = tokenOverride ?? token;
+    final qp = <String, String>{};
+    final t = tokenOverride ?? token;
     if (t != null && t.isNotEmpty) {
       qp['i'] = t;
     }
 
-    final String basePath = origin.path.isEmpty
+    final basePath = origin.path.isEmpty
         ? '/'
         : (origin.path.endsWith('/') ? origin.path : '${origin.path}/');
-    final String streamingPath = '${basePath}streaming';
+    final streamingPath = '${basePath}streaming';
 
     return origin.replace(
       scheme: scheme,
@@ -139,11 +140,11 @@ class MisskeyStreamConfig {
 
 /// APIベースURL(例: https://host/api) から Streaming 用の origin を導出
 Uri deriveOriginFromApiBase(Uri apiBaseUrl) {
-  final String path = apiBaseUrl.path;
-  String newPath = path;
+  final path = apiBaseUrl.path;
+  var newPath = path;
   if (path.endsWith('/api')) {
     newPath = path.substring(0, path.length - 4);
   }
   if (newPath.isEmpty) newPath = '/';
-  return apiBaseUrl.replace(path: newPath, query: null);
+  return apiBaseUrl.replace(path: newPath);
 }

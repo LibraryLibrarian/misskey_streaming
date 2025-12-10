@@ -1,5 +1,5 @@
-export 'src/types.dart';
-export 'src/config.dart';
-export 'src/subscription.dart';
 export 'src/client.dart';
+export 'src/config.dart';
 export 'src/entry.dart';
+export 'src/subscription.dart';
+export 'src/types.dart';

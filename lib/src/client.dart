@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:misskey_api_core/misskey_api_core.dart' as core;
 import 'package:rxdart/rxdart.dart';
 import 'package:uuid/uuid.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
@@ -8,12 +9,9 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import 'config.dart';
 import 'subscription.dart';
 import 'types.dart';
-import 'package:misskey_api_core/misskey_api_core.dart' as core;
 
 class MisskeyStreamingClient {
   MisskeyStreamingClient(this.config);
-
-  final MisskeyStreamConfig config;
 
   /// Core HTTP クライアントから設定を引き継いで Streaming クライアントを生成
   factory MisskeyStreamingClient.fromClient(
@@ -31,28 +29,25 @@ class MisskeyStreamingClient {
     void Function(String, String)? logger,
     Object Function(Object error)? exceptionMapper,
   }) {
-    final Uri origin = deriveOriginFromApiBase(client.baseUrl);
+    final origin = deriveOriginFromApiBase(client.baseUrl);
 
-    final void Function(String, String)? bridgedLogger = logger ??
+    final bridgedLogger = logger ??
         (client.logger != null
             ? (String level, String message) {
                 switch (level) {
                   case 'debug':
                     client.logger!.debug(message);
-                    break;
                   case 'warn':
                     client.logger!.warn(message);
-                    break;
                   case 'error':
                     client.logger!.error(message);
-                    break;
                   default:
                     client.logger!.info(message);
                 }
               }
             : null);
 
-    final MisskeyStreamConfig cfg = MisskeyStreamConfig(
+    final cfg = MisskeyStreamConfig(
       origin: origin,
       tokenProvider: client.tokenProvider,
       enableAutoReconnect: enableAutoReconnect,
@@ -71,6 +66,8 @@ class MisskeyStreamingClient {
     return MisskeyStreamingClient(cfg);
   }
 
+  final MisskeyStreamConfig config;
+
   final BehaviorSubject<MisskeyConnectionState> _statusSubject =
       BehaviorSubject<MisskeyConnectionState>.seeded(
           MisskeyConnectionState.idle);
@@ -83,7 +80,7 @@ class MisskeyStreamingClient {
   Stream<MisskeyMessage> get messages => _messageSubject.stream;
 
   WebSocketChannel? _channel;
-  StreamSubscription? _channelSubscription;
+  StreamSubscription<dynamic>? _channelSubscription;
   Timer? _pingTimer;
 
   final Map<String, MisskeySubscription> _subscriptions =
@@ -113,8 +110,7 @@ class MisskeyStreamingClient {
     await _channel?.sink.close();
     await _statusSubject.close();
     await _messageSubject.close();
-    for (final PublishSubject<MisskeyMessage> s
-        in _perSubscriptionSubjects.values) {
+    for (final s in _perSubscriptionSubjects.values) {
       await s.close();
     }
     _perSubscriptionSubjects.clear();
@@ -125,8 +121,8 @@ class MisskeyStreamingClient {
     String? id,
     Map<String, dynamic> params = const <String, dynamic>{},
   }) async {
-    final String subscriptionId = id ?? const Uuid().v4();
-    final MisskeySubscription sub = MisskeySubscription(
+    final subscriptionId = id ?? const Uuid().v4();
+    final sub = MisskeySubscription(
       id: subscriptionId,
       channel: channel,
       params: params,
@@ -140,12 +136,11 @@ class MisskeyStreamingClient {
   }
 
   void unsubscribe(String id) {
-    final MisskeySubscription? sub = _subscriptions.remove(id);
+    final sub = _subscriptions.remove(id);
     if (sub != null && isConnected) {
       _sendJson(sub.toDisconnectPayload());
     }
-    final PublishSubject<MisskeyMessage>? subject =
-        _perSubscriptionSubjects.remove(id);
+    final subject = _perSubscriptionSubjects.remove(id);
     subject?.close();
   }
 
@@ -167,13 +162,11 @@ class MisskeyStreamingClient {
   ///
   /// 返り値は解除した購読ID数。該当がなければ0を返す
   int unsubscribeChannel(String channel) {
-    final List<String> targets = _subscriptions.values
+    final targets = _subscriptions.values
         .where((s) => s.channel == channel)
         .map((s) => s.id)
-        .toList(growable: false);
-    for (final String id in targets) {
-      unsubscribe(id);
-    }
+        .toList(growable: false)
+      ..forEach(unsubscribe);
     return targets.length;
   }
 
@@ -189,9 +182,8 @@ class MisskeyStreamingClient {
     String? id,
     Map<String, dynamic> params = const <String, dynamic>{},
   }) async {
-    final String subId =
-        await subscribe(channel: channel, id: id, params: params);
-    final Stream<MisskeyChannelMessage> stream = messagesFor(subId);
+    final subId = await subscribe(channel: channel, id: id, params: params);
+    final stream = messagesFor(subId);
     return MisskeySubscriptionHandle(
       id: subId,
       stream: stream,
@@ -201,15 +193,15 @@ class MisskeyStreamingClient {
 
   void _ensureSubject(String subscriptionId) {
     _perSubscriptionSubjects.putIfAbsent(
-        subscriptionId, () => PublishSubject<MisskeyMessage>());
+        subscriptionId, PublishSubject<MisskeyMessage>.new);
   }
 
   Future<void> _openChannel() async {
     try {
-      final String? token = await _resolveToken();
-      final Uri uri = config.buildStreamingUri(token);
+      final token = await _resolveToken();
+      final uri = config.buildStreamingUri(token);
       _log('info', 'Connecting to: $uri');
-      final WebSocketChannel channel = (config.connector != null)
+      final channel = (config.connector != null)
           ? config.connector!(uri)
           : WebSocketChannel.connect(uri, protocols: config.protocols);
       _channel = channel;
@@ -219,9 +211,7 @@ class MisskeyStreamingClient {
             : MisskeyConnectionState.connecting,
       );
       _channelSubscription = channel.stream.listen(
-        (dynamic data) {
-          _onMessage(data);
-        },
+        _onMessage,
         onError: (Object error, StackTrace stack) {
           _log('error', 'Socket error: $error');
           _onError(error);
@@ -234,7 +224,7 @@ class MisskeyStreamingClient {
       );
 
       _onOpen();
-    } catch (e) {
+    } on Exception catch (e) {
       _onError(e);
       if (config.enableAutoReconnect) {
         _scheduleReconnect();
@@ -250,7 +240,7 @@ class MisskeyStreamingClient {
         return await config.tokenProvider!();
       }
       return config.token;
-    } catch (e) {
+    } on Exception catch (e) {
       _log('warn', 'tokenProvider failed: $e');
       return config.token;
     }
@@ -267,31 +257,29 @@ class MisskeyStreamingClient {
   void _onMessage(dynamic data) {
     try {
       if (data is String) {
-        final Map<String, dynamic> decoded =
-            jsonDecode(data) as Map<String, dynamic>;
+        final decoded = jsonDecode(data) as Map<String, dynamic>;
         _dispatchDecoded(decoded);
       } else if (data is List<int>) {
-        final String text = utf8.decode(data);
-        final Map<String, dynamic> decoded =
-            jsonDecode(text) as Map<String, dynamic>;
+        final text = utf8.decode(data);
+        final decoded = jsonDecode(text) as Map<String, dynamic>;
         _dispatchDecoded(decoded);
       } else {
         _log('warn', 'Unknown message type: ${data.runtimeType}');
       }
-    } catch (e) {
+    } on Exception catch (e) {
       _log('error', 'Message parse error: $e');
     }
   }
 
   void _dispatchDecoded(Map<String, dynamic> decoded) {
-    final String type = decoded['type']?.toString() ?? 'unknown';
+    final type = decoded['type']?.toString() ?? 'unknown';
     final dynamic body = decoded['body'];
 
     if (type == 'channel' && body is Map<String, dynamic>) {
-      final String? subId = body['id']?.toString();
-      final String innerType = body['type']?.toString() ?? 'unknown';
+      final subId = body['id']?.toString();
+      final innerType = body['type']?.toString() ?? 'unknown';
       final dynamic innerBody = body['body'];
-      final MisskeyMessage msg = MisskeyMessage(
+      final msg = MisskeyMessage(
         type: innerType,
         body: innerBody,
         id: subId,
@@ -304,14 +292,14 @@ class MisskeyStreamingClient {
       return;
     }
 
-    final String? id = decoded['id']?.toString();
+    final id = decoded['id']?.toString();
     _messageSubject
         .add(MisskeyMessage(type: type, body: body, id: id, raw: decoded));
   }
 
   void _onError(Object error) {
     if (_isDisposed) return;
-    final Object mapped =
+    final mapped =
         config.exceptionMapper != null ? config.exceptionMapper!(error) : error;
     _statusSubject.add(MisskeyConnectionState.error);
     if (config.enableAutoReconnect) {
@@ -330,14 +318,14 @@ class MisskeyStreamingClient {
 
   void _scheduleReconnect() {
     if (_isDisposed) return;
-    final int attempt = ++_reconnectAttempts;
+    final attempt = ++_reconnectAttempts;
     if (config.maxReconnectAttempts != null &&
         attempt > config.maxReconnectAttempts!) {
       _log('error', 'Max reconnect attempts reached');
       _statusSubject.add(MisskeyConnectionState.error);
       return;
     }
-    final Duration delay = _computeBackoffDelay(attempt);
+    final delay = _computeBackoffDelay(attempt);
     _log('info',
         'Reconnecting in ${delay.inMilliseconds}ms (attempt: $attempt)');
     Future<void>.delayed(delay, () {
@@ -348,12 +336,12 @@ class MisskeyStreamingClient {
   }
 
   Duration _computeBackoffDelay(int attempt) {
-    final int baseMs = config.reconnectInitialDelay.inMilliseconds;
-    final int maxMs = config.reconnectMaxDelay.inMilliseconds;
-    int delayMs = baseMs * (1 << (attempt - 1));
+    final baseMs = config.reconnectInitialDelay.inMilliseconds;
+    final maxMs = config.reconnectMaxDelay.inMilliseconds;
+    var delayMs = baseMs * (1 << (attempt - 1));
     if (delayMs > maxMs) delayMs = maxMs;
-    final double jitter = 0.2;
-    final double factor = 1 +
+    const jitter = 0.2;
+    final factor = 1 +
         (jitter * (DateTime.now().millisecondsSinceEpoch % 1000) / 500.0 -
             jitter);
     delayMs = (delayMs * factor).clamp(baseMs, maxMs).toInt();
@@ -362,14 +350,14 @@ class MisskeyStreamingClient {
 
   void _resubscribeAll() {
     if (!isConnected) return;
-    for (final MisskeySubscription sub in _subscriptions.values) {
+    for (final sub in _subscriptions.values) {
       _sendJson(sub.toConnectPayload());
     }
   }
 
   void _startPing() {
     _pingTimer?.cancel();
-    final Duration? interval = config.pingInterval;
+    final interval = config.pingInterval;
     if (interval == null) return;
     _pingTimer = Timer.periodic(interval, (_) {
       if (!isConnected) return;
@@ -378,9 +366,9 @@ class MisskeyStreamingClient {
   }
 
   void _sendJson(Map<String, dynamic> payload) {
-    final WebSocketChannel? channel = _channel;
+    final channel = _channel;
     if (channel == null) return;
-    final String text = jsonEncode(payload);
+    final text = jsonEncode(payload);
     _log('debug', '>> $text');
     channel.sink.add(text);
   }

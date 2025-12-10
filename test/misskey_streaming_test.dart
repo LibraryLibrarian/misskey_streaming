@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:misskey_streaming/misskey_streaming.dart';
 import 'package:misskey_api_core/misskey_api_core.dart' as core;
+import 'package:misskey_streaming/misskey_streaming.dart';
 
 void main() {
   test('buildStreamingUriのスキーム変換とトークン付与をテスト', () {
@@ -37,11 +37,11 @@ void main() {
     expect(uri.path, '/sub/streaming');
   });
 
-  test('fromClient が HTTPクライアントの設定を継承することをテスト', () async {
+  test('fromClient が HTTPクライアントの設定を継承することをテスト', () {
     final http = core.MisskeyHttpClient(
       config:
           core.MisskeyApiConfig(baseUrl: Uri.parse('https://h.example/api')),
-      tokenProvider: () async => 'T',
+      tokenProvider: () => Future.value('T'),
     );
     final streaming = MisskeyStreamingClient.fromClient(
       http,
@@ -53,19 +53,20 @@ void main() {
     expect(uri.queryParameters['i'], 'T');
   });
 
-  test('購読解除でdisconnectが送信されストリームが完了する', () async {
+  test('購読解除でdisconnectが送信されストリームが完了する', () {
     final client = MisskeyStreamingClient(MisskeyStreamConfig(
       origin: Uri.parse('https://h.example'),
       token: 'T',
     ));
 
-    final handle = await client.subscribeChannelStream(channel: 'homeTimeline');
+    return client.subscribeChannelStream(channel: 'homeTimeline').then(
+      (handle) {
+        final done = expectLater(handle.stream, emitsDone);
+        handle.unsubscribe();
 
-    final done = expectLater(handle.stream, emitsDone);
-    handle.unsubscribe();
-
-    await done;
-    await client.dispose();
+        return done.then((_) => client.dispose());
+      },
+    );
   });
 
   test('チャンネル名でまとめて購読解除可能か', () async {
@@ -89,8 +90,9 @@ void main() {
     expect(rem, 'g2');
 
     // 明示的にクリーンアップ
-    client.unsubscribe('g1');
-    client.unsubscribe('g2');
+    client
+      ..unsubscribe('g1')
+      ..unsubscribe('g2');
     await client.dispose();
   });
 
