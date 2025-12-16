@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import 'config.dart';
+import 'logging.dart';
 import 'subscription.dart';
 import 'types.dart';
 
@@ -88,6 +89,11 @@ class MisskeyStreamingClient {
   int _reconnectAttempts = 0;
   bool _isDisposed = false;
 
+  /// ノートキャプチャの対応関係（noteId -> Set&lt;subscriptionId&gt;）
+  ///
+  /// 同一ノートが複数の購読でキャプチャされる可能性があるためSetで管理
+  final Map<String, Set<String>> _capturedNotes = <String, Set<String>>{};
+
   bool get isConnected => _statusSubject.value == MisskeyConnectionState.open;
 
   Future<void> connect() async {
@@ -136,6 +142,9 @@ class MisskeyStreamingClient {
   }
 
   void unsubscribe(String id) {
+    // この購読に関連するキャプチャをクリア
+    _clearCapturesForSubscription(id);
+
     final sub = _subscriptions.remove(id);
     if (sub != null && isConnected) {
       _sendJson(sub.toDisconnectPayload());
@@ -200,7 +209,7 @@ class MisskeyStreamingClient {
     try {
       final token = await _resolveToken();
       final uri = config.buildStreamingUri(token);
-      _log('info', 'Connecting to: $uri');
+      streamingLog.i('Connecting to: $uri');
       final channel = (config.connector != null)
           ? config.connector!(uri)
           : WebSocketChannel.connect(uri, protocols: config.protocols);
@@ -213,11 +222,11 @@ class MisskeyStreamingClient {
       _channelSubscription = channel.stream.listen(
         _onMessage,
         onError: (Object error, StackTrace stack) {
-          _log('error', 'Socket error: $error');
+          streamingLog.e('Socket error: $error');
           _onError(error);
         },
         onDone: () {
-          _log('info', 'Socket done');
+          streamingLog.i('Socket done');
           _onDone();
         },
         cancelOnError: false,
@@ -241,13 +250,13 @@ class MisskeyStreamingClient {
       }
       return config.token;
     } on Exception catch (e) {
-      _log('warn', 'tokenProvider failed: $e');
+      streamingLog.w('tokenProvider failed: $e');
       return config.token;
     }
   }
 
   void _onOpen() {
-    _log('info', 'Connected');
+    streamingLog.i('Connected');
     _statusSubject.add(MisskeyConnectionState.open);
     _reconnectAttempts = 0;
     _startPing();
@@ -264,17 +273,34 @@ class MisskeyStreamingClient {
         final decoded = jsonDecode(text) as Map<String, dynamic>;
         _dispatchDecoded(decoded);
       } else {
-        _log('warn', 'Unknown message type: ${data.runtimeType}');
+        streamingLog.w('Unknown message type: ${data.runtimeType}');
       }
     } on Exception catch (e) {
-      _log('error', 'Message parse error: $e');
+      streamingLog.e('Message parse error: $e');
     }
   }
+
+  /// ノートキャプチャイベントのタイプ一覧
+  static const _noteCaptureEventTypes = {
+    'reacted',
+    'unreacted',
+    'deleted',
+    'pollVoted',
+  };
 
   void _dispatchDecoded(Map<String, dynamic> decoded) {
     final type = decoded['type']?.toString() ?? 'unknown';
     final dynamic body = decoded['body'];
 
+    // 受信したメッセージをログ出力（pong以外）
+    if (type != 'pong') {
+      final bodyStr = body.toString();
+      final truncated =
+          bodyStr.length > 200 ? '${bodyStr.substring(0, 200)}...' : bodyStr;
+      streamingLog.d('<< type=$type body=$truncated');
+    }
+
+    // チャンネルからのメッセージ
     if (type == 'channel' && body is Map<String, dynamic>) {
       final subId = body['id']?.toString();
       final innerType = body['type']?.toString() ?? 'unknown';
@@ -292,6 +318,51 @@ class MisskeyStreamingClient {
       return;
     }
 
+    // ノートキャプチャイベント（noteUpdated: reacted/unreacted/deleted/pollVoted）
+    // Misskeyは type: "noteUpdated", body: { id, type, body } の形式で送信する
+    if (type == 'noteUpdated' && body is Map<String, dynamic>) {
+      final noteId = body['id']?.toString();
+      final eventType = body['type']?.toString();
+      final eventBody = body['body'];
+      streamingLog.d(
+        '[NOTE UPDATED] eventType=$eventType noteId=$noteId',
+      );
+      if (noteId != null && _noteCaptureEventTypes.contains(eventType)) {
+        final subscriptionIds = _capturedNotes[noteId];
+        streamingLog.d(
+          '[CAPTURED NOTE LOOKUP] noteId=$noteId '
+          'subscriptions=${subscriptionIds?.length ?? 0} '
+          'totalCaptured=${_capturedNotes.length}',
+        );
+        if (subscriptionIds != null && subscriptionIds.isNotEmpty) {
+          // eventType (reacted等) をメッセージタイプとして使用
+          final msg = MisskeyMessage(
+            type: eventType!,
+            body: eventBody,
+            id: noteId,
+            raw: decoded,
+          );
+          _messageSubject.add(msg);
+          // キャプチャしている全ての購読ストリームに転送
+          for (final subId in subscriptionIds) {
+            // ignore: close_sinks
+            final subject = _perSubscriptionSubjects[subId];
+            if (subject != null) {
+              streamingLog.d(
+                '[FORWARDING] $eventType to subscription $subId',
+              );
+              subject.add(msg);
+            }
+          }
+          return;
+        } else {
+          streamingLog.d(
+            '[NOTE UPDATED] uncaptured note: noteId=$noteId',
+          );
+        }
+      }
+    }
+
     final id = decoded['id']?.toString();
     _messageSubject
         .add(MisskeyMessage(type: type, body: body, id: id, raw: decoded));
@@ -305,7 +376,7 @@ class MisskeyStreamingClient {
     if (config.enableAutoReconnect) {
       _scheduleReconnect();
     }
-    _log('error', 'onError: $mapped');
+    streamingLog.e('onError: $mapped');
   }
 
   void _onDone() {
@@ -321,13 +392,13 @@ class MisskeyStreamingClient {
     final attempt = ++_reconnectAttempts;
     if (config.maxReconnectAttempts != null &&
         attempt > config.maxReconnectAttempts!) {
-      _log('error', 'Max reconnect attempts reached');
+      streamingLog.e('Max reconnect attempts reached');
       _statusSubject.add(MisskeyConnectionState.error);
       return;
     }
     final delay = _computeBackoffDelay(attempt);
-    _log('info',
-        'Reconnecting in ${delay.inMilliseconds}ms (attempt: $attempt)');
+    streamingLog
+        .i('Reconnecting in ${delay.inMilliseconds}ms (attempt: $attempt)');
     Future<void>.delayed(delay, () {
       if (_isDisposed) return;
       _statusSubject.add(MisskeyConnectionState.reconnecting);
@@ -350,8 +421,25 @@ class MisskeyStreamingClient {
 
   void _resubscribeAll() {
     if (!isConnected) return;
+
+    // チャンネル購読を再送信
     for (final sub in _subscriptions.values) {
       _sendJson(sub.toConnectPayload());
+    }
+
+    // キャプチャ中のノートを再送信
+    // サーバー側は再接続時にキャプチャ状態をリセットするため、
+    // クライアント側で保持している全てのキャプチャを再送信する必要がある
+    if (_capturedNotes.isNotEmpty) {
+      streamingLog.i(
+        '[RECONNECT] Re-capturing ${_capturedNotes.length} notes',
+      );
+      for (final noteId in _capturedNotes.keys) {
+        _sendJson(<String, dynamic>{
+          'type': 'subNote',
+          'body': <String, dynamic>{'id': noteId},
+        });
+      }
     }
   }
 
@@ -369,18 +457,89 @@ class MisskeyStreamingClient {
     final channel = _channel;
     if (channel == null) return;
     final text = jsonEncode(payload);
-    _log('debug', '>> $text');
+    streamingLog.d('>> $text');
     channel.sink.add(text);
   }
 
-  void _log(String level, String message) {
-    if (config.logger != null) {
-      config.logger!(level, message);
-      return;
+  /// ノートをキャプチャしてリアクション等のイベントを受信可能にする
+  ///
+  /// キャプチャ後、以下のイベントが購読ストリームで受信可能
+  /// - `reacted`: リアクション追加
+  /// - `unreacted`: リアクション削除
+  /// - `deleted`: ノート削除
+  /// - `pollVoted`: 投票が行われた（アンケート付きノートの場合）
+  ///
+  /// [subscriptionId]: イベントを受信するチャンネルの購読ID
+  /// [noteId]: キャプチャするノートのID
+  ///
+  /// Example:
+  /// ```dart
+  /// final handle = await client.subscribeChannelStream(
+  ///   channel: 'homeTimeline',
+  /// );
+  ///
+  /// handle.stream.listen((msg) {
+  ///   if (msg.type == 'note') {
+  ///     final noteId = msg.body['id'];
+  ///     client.captureNote(handle.id, noteId);
+  ///   } else if (msg.type == 'reacted') {
+  ///     // リアクションイベントを処理
+  ///   }
+  /// });
+  /// ```
+  void captureNote(String subscriptionId, String noteId) {
+    // 対応関係を追跡
+    _capturedNotes.putIfAbsent(noteId, () => <String>{}).add(subscriptionId);
+
+    // サーバーにsubNoteを送信
+    _sendJson(<String, dynamic>{
+      'type': 'subNote',
+      'body': <String, dynamic>{'id': noteId},
+    });
+
+    streamingLog.d('[CAPTURE NOTE] noteId=$noteId subId=$subscriptionId');
+  }
+
+  /// ノートのキャプチャを解除
+  ///
+  /// [subscriptionId]: イベントを受信していたチャンネルの購読ID
+  /// [noteId]: キャプチャを解除するノートのID
+  void uncaptureNote(String subscriptionId, String noteId) {
+    // 対応関係から削除
+    final subscriptionIds = _capturedNotes[noteId];
+    if (subscriptionIds != null) {
+      subscriptionIds.remove(subscriptionId);
+      if (subscriptionIds.isEmpty) {
+        _capturedNotes.remove(noteId);
+        // 最後の購読が解除された場合のみサーバーに送信
+        _sendJson(<String, dynamic>{
+          'type': 'unsubNote',
+          'body': <String, dynamic>{'id': noteId},
+        });
+      }
     }
-    if (config.debugLog) {
-      // ignore: avoid_print
-      print('[misskey_streaming][$level] $message');
+
+    streamingLog.d('[UNCAPTURE NOTE] noteId=$noteId subId=$subscriptionId');
+  }
+
+  /// 指定購読の全キャプチャを解除（購読解除時に内部的に呼ばれる）
+  void _clearCapturesForSubscription(String subscriptionId) {
+    final noteIdsToRemove = <String>[];
+
+    for (final entry in _capturedNotes.entries) {
+      entry.value.remove(subscriptionId);
+      if (entry.value.isEmpty) {
+        noteIdsToRemove.add(entry.key);
+      }
+    }
+
+    for (final noteId in noteIdsToRemove) {
+      _capturedNotes.remove(noteId);
+      // サーバーにunsubNoteを送信
+      _sendJson(<String, dynamic>{
+        'type': 'unsubNote',
+        'body': <String, dynamic>{'id': noteId},
+      });
     }
   }
 }
@@ -409,48 +568,6 @@ extension MisskeyStreamingClientChannel on MisskeyStreamingClient {
   }
 }
 
-/// ノートキャプチャ機能を提供するextension
-extension MisskeyStreamingClientNoteCapture on MisskeyStreamingClient {
-  /// ノートをキャプチャしてリアクション等のイベントを受信可能にする
-  ///
-  /// キャプチャ後、以下のイベントが受信可能
-  /// - `reacted`: リアクション追加
-  /// - `unreacted`: リアクション削除
-  /// - `deleted`: ノート削除
-  /// - `pollVoted`: 投票が行われた（アンケート付きノートの場合）
-  ///
-  /// [subscriptionId]: イベントを受信するチャンネルの購読ID
-  /// [noteId]: キャプチャするノートのID
-  ///
-  /// Example:
-  /// ```dart
-  /// final handle = await client.subscribeChannelStream(
-  ///   channel: 'homeTimeline',
-  /// );
-  ///
-  /// handle.stream.listen((msg) {
-  ///   if (msg.type == 'note') {
-  ///     final noteId = msg.body['id'];
-  ///     client.captureNote(handle.id, noteId);
-  ///   } else if (msg.type == 'reacted') {
-  ///     // リアクションイベントを処理
-  ///   }
-  /// });
-  /// ```
-  void captureNote(String subscriptionId, String noteId) {
-    sendToChannel(subscriptionId, 'subNote', <String, dynamic>{'id': noteId});
-  }
-
-  /// ノートのキャプチャを解除
-  ///
-  /// [subscriptionId]: イベントを受信していたチャンネルの購読ID
-  /// [noteId]: キャプチャを解除するノートのID
-  ///
-  /// Example:
-  /// ```dart
-  /// client.uncaptureNote(handle.id, noteId);
-  /// ```
-  void uncaptureNote(String subscriptionId, String noteId) {
-    sendToChannel(subscriptionId, 'unsubNote', <String, dynamic>{'id': noteId});
-  }
-}
+// 注意: ノートキャプチャ機能は MisskeyStreamingClient 本体の
+// captureNote / uncaptureNote メソッドに移動しました。
+// 拡張メソッドは後方互換性のため残していますが、本体のメソッドを推奨します。
