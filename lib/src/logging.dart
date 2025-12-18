@@ -12,7 +12,7 @@ final Logger streamingLog = Logger(
 
 /// カスタムログプリンター
 ///
-/// 出力形式: [misskey_streaming] [LEVEL] YYYY-MM-DD HH:MM:SS.ffffff メッセージ
+/// 出力形式: [misskey_streaming] [`LEVEL`] YYYY-MM-DD HH:MM:SS.ffffff メッセージ
 class _CustomLogPrinter extends LogPrinter {
   static final Map<Level, String> _levelLabels = {
     Level.trace: 'TRACE',
