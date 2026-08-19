@@ -11,3 +11,4 @@ linter:
     depend_on_referenced_packages: true
     prefer_relative_imports: true
     always_put_control_body_on_new_line: false
+    omit_obvious_property_types: false
