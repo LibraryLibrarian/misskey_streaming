@@ -17,7 +17,7 @@ dev_dependencies:
   flutter_lints: ^5.0.0
   flutter_test:
     sdk: flutter
-  pedantic_mono: ^1.33.0
+  pedantic_mono: ^1.32.0
   pubspec_dependency_sorter: ^1.0.5
 platforms:
   ios:

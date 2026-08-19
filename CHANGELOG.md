@@ -27,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Migrated internal logging from custom implementation to `logger` package
 - Debug logs now respect build mode (verbose in debug, warnings only in release)
 - Improved log formatting with consistent prefixes
+- Aligned the `pedantic_mono` development dependency with the declared minimum
+  Dart SDK version.
 
 ### Fixed
 - Corrected note capture event detection to handle Misskey's `noteUpdated` wrapper format
