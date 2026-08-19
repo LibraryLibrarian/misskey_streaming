@@ -4,12 +4,12 @@ homepage: https://librarylibrarian.com/
 environment:
   sdk: ">=3.5.0 <4.0.0"
   flutter: ">=3.24.0"
-description: A Flutter package that allows easy use of Misskey's Streaming API.
+description: Deprecated because Streaming support is integrated into misskey_client. Existing releases remain available for current users.
 dependencies:
   flutter:
     sdk: flutter
   logger: ^2.6.2
-  misskey_api_core: ^0.0.4-beta
+  misskey_api_core: ^1.0.0
   rxdart: ^0.28.0
   uuid: ^4.5.1
   web_socket_channel: ^3.0.3
@@ -17,7 +17,7 @@ dev_dependencies:
   flutter_lints: ^5.0.0
   flutter_test:
     sdk: flutter
-  pedantic_mono: ^1.33.0
+  pedantic_mono: ^1.32.0
   pubspec_dependency_sorter: ^1.0.5
 platforms:
   ios:

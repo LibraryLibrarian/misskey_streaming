@@ -36,7 +36,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   misskey_streaming:
     path: ../
-  misskey_api_core: ^0.0.2-beta
+  misskey_api_core: ^1.0.0
   misskey_auth: ^0.1.4-beta
 
 dev_dependencies:

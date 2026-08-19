@@ -5,7 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.0.2-beta] - 2025-12-10
+## [0.0.2-beta] - 2026-08-20
+
+### Deprecated
+
+- Deprecated this package because Streaming support is integrated into
+  `misskey_client` as of `1.0.0-beta.7`.
+- Existing releases remain available and will not be retracted.
+- Added a migration guide to the integrated Streaming API.
 
 ### Added
 - Note capture functionality for real-time updates on specific notes
@@ -20,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Migrated internal logging from custom implementation to `logger` package
 - Debug logs now respect build mode (verbose in debug, warnings only in release)
 - Improved log formatting with consistent prefixes
+- Aligned the `pedantic_mono` development dependency with the declared minimum
+  Dart SDK version.
 
 ### Fixed
 - Corrected note capture event detection to handle Misskey's `noteUpdated` wrapper format

@@ -1,3 +1,16 @@
+> [!WARNING]
+> **Deprecated / 非推奨**
+>
+> Misskey Streaming support has been integrated into
+> [`misskey_client`](https://pub.dev/packages/misskey_client) since
+> `1.0.0-beta.7`.
+>
+> Streaming機能は `misskey_client 1.0.0-beta.7` に統合されました。
+> 新規利用では本パッケージではなく `misskey_client` を使用してください。
+>
+> Existing releases will remain available and will not be retracted. See the
+> [migration guide](MIGRATION_TO_MISSKEY_CLIENT.md).
+
 # Misskey Streaming
 
 <p align="center">
@@ -25,14 +38,29 @@ A Flutter/Dart library for Misskey Streaming API (WebSocket). Subscribe/unsubscr
 
 ### Installation
 
+For new projects, use the integrated Streaming API in `misskey_client`:
+
 Add to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  misskey_streaming: ^0.0.1-beta
+  misskey_client: ^1.0.0-beta.7
 ```
 
-### Quick Start
+Existing projects can continue to resolve the final standalone release while
+they migrate:
+
+```yaml
+dependencies:
+  misskey_streaming: ^0.0.2-beta
+```
+
+See [Migrating to misskey_client](MIGRATION_TO_MISSKEY_CLIENT.md).
+
+### Legacy quick start
+
+The following example is retained for existing users. New code should use the
+integrated API described in the migration guide.
 
 ```dart
 import 'package:misskey_streaming/misskey_streaming.dart';
@@ -158,14 +186,31 @@ Misskey Streaming API（WebSocket）用のFlutter/Dartライブラリです。�
 
 ### インストール
 
+新規プロジェクトでは `misskey_client` に統合されたStreaming APIを利用して
+ください。
+
 `pubspec.yaml` に以下を追加してください：
 
 ```yaml
 dependencies:
-  misskey_streaming: ^0.0.1-beta
+  misskey_client: ^1.0.0-beta.7
 ```
 
-### クイックスタート
+既存プロジェクトは、移行が完了するまで単独パッケージの最終版を引き続き
+解決できます。
+
+```yaml
+dependencies:
+  misskey_streaming: ^0.0.2-beta
+```
+
+詳細は [misskey_clientへの移行ガイド](MIGRATION_TO_MISSKEY_CLIENT.md)を
+参照してください。
+
+### 既存利用者向けクイックスタート
+
+以下の例は既存利用者向けに残しています。新規コードでは移行ガイドに記載した
+統合APIを利用してください。
 
 ```dart
 import 'package:misskey_streaming/misskey_streaming.dart';
