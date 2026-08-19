@@ -300,10 +300,10 @@ packages:
     dependency: "direct main"
     description:
       name: misskey_api_core
-      sha256: a4ab4dcadebd2c11061c79e4839f2f25740cf966e8e2a3763102baf55f45ee96
+      sha256: "32e17877e5e8044027b6815b510001d4329854d559269b405464e796a16b1ae5"
       url: "https://pub.dev"
     source: hosted
-    version: "0.0.4-beta"
+    version: "1.0.0"
   misskey_auth:
     dependency: "direct main"
     description:
@@ -318,7 +318,7 @@ packages:
       path: ".."
       relative: true
     source: path
-    version: "0.0.1-beta"
+    version: "0.0.2-beta"
   path:
     dependency: transitive
     description:
