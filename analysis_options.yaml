@@ -4,6 +4,9 @@ analyzer:
   exclude:
     - "**/*.g.dart"
     - "**/*.freezed.dart"
+  errors:
+    # pedantic_mono 1.32.0 enables two mutually incompatible rules internally.
+    included_file_warning: ignore
 include: package:pedantic_mono/analysis_options.yaml
 
 linter:
